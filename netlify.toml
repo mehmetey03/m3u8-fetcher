@@ -9,6 +9,11 @@
   status = 200
 
 [[redirects]]
+  from = "/fetch"
+  to = "/.netlify/functions/fetch"
+  status = 200
+
+[[redirects]]
   from = "/proxy"
   to = "/.netlify/functions/proxy"
   status = 200

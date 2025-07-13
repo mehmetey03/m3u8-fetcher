@@ -1,16 +1,23 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 
-console.log('Gerekli kütüphaneler yükleniyor...');
+console.log('Gerekli bağımlılıklar yükleniyor...');
 
 try {
-  // Gerekli sistem kütüphanelerini yükle
-  execSync('apt-get update && apt-get install -y libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2', { 
-    stdio: 'inherit' 
-  });
+  // Chromium-min paketini kontrol et
+  const chromiumPath = path.join(__dirname, '../node_modules/@sparticuz/chromium-min');
+  if (!fs.existsSync(chromiumPath)) {
+    console.log('Chromium-min paketi bulunamadı, yeniden yükleniyor...');
+    execSync('npm install @sparticuz/chromium-min --force', { stdio: 'inherit' });
+  }
 
-  // Chromium'u yükle
-  execSync('npx @sparticuz/chromium install', { stdio: 'inherit' });
+  // Statik linked Chromium binary kullan
+  console.log('Chromium binary kontrol ediliyor...');
+  const chromiumBinary = path.join(chromiumPath, 'bin/chromium');
+  if (!fs.existsSync(chromiumBinary)) {
+    throw new Error('Chromium binary bulunamadı!');
+  }
 
   console.log('Bağımlılıklar başarıyla yüklendi');
 } catch (error) {

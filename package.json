@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "main": "api/fetch.js",
   "scripts": {
-    "start": "node api/fetch.js"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "puppeteer": "^21.7.0",
     "node-fetch": "^3.3.2",
-    "puppeteer": "^24.12.1"
+    "@netlify/functions": "^1.4.0"
+  },
+  "engines": {
+    "node": ">=18.x"
   }
 }

@@ -3,12 +3,5 @@
   functions = "api"
   publish = "public"
 
-[[redirects]]
-  from = "/cheerio-fetch"
-  to = "/.netlify/functions/cheerio-fetcher"
-  status = 200
-
-[[redirects]]
-  from = "/cheerio-fetch/*"
-  to = "/.netlify/functions/cheerio-fetcher/:splat"
-  status = 200
+[functions]
+  node_bundler = "esbuild"

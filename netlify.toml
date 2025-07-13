@@ -1,17 +1,13 @@
 [build]
-  command = "npm install && npm run postinstall"
+  command = "npm install && npm run install-deps"
   functions = "api"
   publish = "public"
 
 [[redirects]]
-  from = "/fetch"
-  to = "/.netlify/functions/fetch"
-  status = 200
-
-[[redirects]]
-  from = "/proxy"
-  to = "/.netlify/functions/proxy"
+  from = "/fetch/*"
+  to = "/.netlify/functions/fetch/:splat"
   status = 200
 
 [build.environment]
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+  CHROMIUM_PATH = "/var/task/node_modules/@sparticuz/chromium-min/bin/chromium"

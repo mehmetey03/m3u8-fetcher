@@ -2,31 +2,30 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/*.js",
+      "src": "api/index.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/fetch/([0-9]+)",
-      "dest": "/api/fetch?id=$1",
+      "dest": "/api/index?path=fetch&id=$1",
       "methods": ["GET"]
     },
     {
-      "src": "/stream/(.+)",
-      "dest": "/api/stream?url=$1",
+      "src": "/stream/([0-9]+)",
+      "dest": "/api/index?path=stream&id=$1",
       "methods": ["GET"]
     },
     {
       "src": "/proxy",
-      "dest": "/api/proxy",
-      "methods": ["POST"]
+      "dest": "/api/index?path=proxy",
+      "methods": ["GET"]
     },
     {
       "src": "/(.*)",
       "status": 404,
-      "headers": { "Content-Type": "application/json" },
-      "dest": "/api/error"
+      "dest": "/api/index?path=404"
     }
   ]
 }

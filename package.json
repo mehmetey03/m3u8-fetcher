@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "main": "api/fetch.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "postinstall": "node scripts/install-chromium.js"
   },
   "dependencies": {
     "puppeteer-core": "^21.7.0",
-    "@sparticuz/chromium-min": "^121.0.0",
+    "@sparticuz/chromium": "^121.0.0",
     "node-fetch": "^3.3.2"
   },
   "engines": {

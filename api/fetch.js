@@ -3,26 +3,44 @@ const puppeteer = require('puppeteer');
 const fetch = require('node-fetch').default;
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Middleware'ler
 app.use(express.json());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
   next();
 });
+
+// Rate Limiting
+const rateLimit = require('express-rate-limit');
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100
+});
+app.use(limiter);
 
 // M3U8 Proxy Endpoint
 app.get('/proxy', async (req, res) => {
   try {
+    if (!req.query.url) {
+      return res.status(400).json({ error: 'URL parametresi gereklidir' });
+    }
+
     const targetUrl = decodeURIComponent(req.query.url);
-    if (!targetUrl) return res.status(400).json({ error: 'URL parametresi eksik' });
+    const allowedDomains = ['macizlevip315.shop', 'example.com'];
+    const urlObj = new URL(targetUrl);
+
+    if (!allowedDomains.includes(urlObj.hostname)) {
+      return res.status(403).json({ error: 'İzin verilmeyen domain' });
+    }
 
     const response = await fetch(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Referer': 'https://macizlevip315.shop/',
+        'Referer': urlObj.origin,
         'Accept': '*/*'
       },
       timeout: 5000
@@ -38,7 +56,7 @@ app.get('/proxy', async (req, res) => {
       
       text = text.split('\n').map(line => {
         if (line.trim() && !line.startsWith('#') && (line.endsWith('.ts') || line.startsWith('http'))) {
-          return `${req.protocol}://${req.get('host')}/proxy?url=${encodeURIComponent(line.trim())}`;
+          return `/proxy?url=${encodeURIComponent(line.trim())}`;
         }
         return line;
       }).join('\n');
@@ -51,6 +69,7 @@ app.get('/proxy', async (req, res) => {
     response.body.pipe(res);
     
   } catch (error) {
+    console.error('Proxy Error:', error);
     res.status(500).json({ error: `Proxy hatası: ${error.message}` });
   }
 });
@@ -68,14 +87,16 @@ app.get('/stream/:id', async (req, res) => {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--single-process'
+        '--single-process',
+        '--disable-gpu'
       ],
-      timeout: 15000
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
+      timeout: 30000
     });
 
     const page = await browser.newPage();
-    await page.setDefaultNavigationTimeout(10000);
-    await page.setDefaultTimeout(8000);
+    await page.setDefaultNavigationTimeout(15000);
+    await page.setDefaultTimeout(10000);
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
     let m3u8Url = null;
@@ -88,14 +109,12 @@ app.get('/stream/:id', async (req, res) => {
     });
 
     await page.goto(targetUrl, { 
-      waitUntil: 'domcontentloaded',
-      timeout: 8000 
+      waitUntil: 'networkidle2',
+      timeout: 15000 
     });
 
-    await page.waitForFunction(
-      () => document.body.innerHTML.includes('m3u8'),
-      { timeout: 5000 }
-    ).catch(() => {});
+    // 5 saniye bekleyerek m3u8 URL'sinin bulunmasını sağla
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     if (!m3u8Url) {
       const content = await page.content();
@@ -104,19 +123,17 @@ app.get('/stream/:id', async (req, res) => {
     }
 
     if (!m3u8Url) {
-      return res.status(404).json({ error: 'M3U8 bulunamadı' });
+      return res.status(404).json({ error: 'M3U8 URL bulunamadı' });
     }
 
-    const proxiedUrl = `${req.protocol}://${req.get('host')}/proxy?url=${encodeURIComponent(m3u8Url)}`;
-    
     res.json({ 
-      url: proxiedUrl,
+      url: `/proxy?url=${encodeURIComponent(m3u8Url)}`,
       originalUrl: m3u8Url,
       id: id
     });
 
   } catch (error) {
-    console.error('Hata:', error);
+    console.error('Stream Error:', error);
     res.status(500).json({ error: error.message });
   } finally {
     if (browser) await browser.close();
@@ -127,23 +144,26 @@ app.get('/stream/:id', async (req, res) => {
 app.get('/fetch/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const streamResponse = await fetch(`${req.protocol}://${req.get('host')}/stream/${id}`);
     
+    // Stream endpointini çağır
+    const streamResponse = await fetch(`http://${req.headers.host}/stream/${id}`);
     if (!streamResponse.ok) {
       throw new Error(await streamResponse.text());
     }
 
     const { url } = await streamResponse.json();
-    const m3u8Response = await fetch(url);
-
+    
+    // Proxy endpointini çağır
+    const m3u8Response = await fetch(`http://${req.headers.host}${url}`);
     if (!m3u8Response.ok) {
-      throw new Error('M3U8 indirilemedi');
+      throw new Error('M3U8 içeriği alınamadı');
     }
 
     const m3u8Content = await m3u8Response.text();
     res.set('Content-Type', 'application/vnd.apple.mpegurl');
     res.send(m3u8Content);
   } catch (error) {
+    console.error('Fetch Error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -151,9 +171,10 @@ app.get('/fetch/:id', async (req, res) => {
 // Vercel için export
 module.exports = app;
 
-// Lokal çalıştırma
+// Lokal geliştirme için
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`Server http://localhost:${PORT}/fetch/5062 adresinde çalışıyor`);
+    console.log(`Server http://localhost:${PORT} adresinde çalışıyor`);
+    console.log(`Test Endpoint: http://localhost:${PORT}/fetch/5062`);
   });
 }

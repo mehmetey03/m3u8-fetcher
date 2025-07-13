@@ -3,13 +3,48 @@
 <head>
   <title>M3U8 Fetcher API</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-    code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    code {
+      background: #f4f4f4;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+    .example {
+      background: #f8f8f8;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+    }
   </style>
 </head>
 <body>
   <h1>M3U8 Fetcher API</h1>
-  <p>Kullanım: <code>/fetch?id=STREAM_ID</code></p>
-  <p>Örnek: <a href="/fetch?id=5062">/fetch?id=5062</a></p>
+  
+  <h2>Kullanım</h2>
+  <div class="example">
+    <code>GET /fetch?id=STREAM_ID</code>
+    <p>Örnek: <a href="/fetch?id=5062">/fetch?id=5062</a></p>
+  </div>
+  
+  <h2>Yanıt Formatı</h2>
+  <pre>{
+  "url": "Proxy URL",
+  "originalUrl": "Bulunan M3U8 URL",
+  "id": "Sorgulanan ID"
+}</pre>
+  
+  <h2>Hata Durumları</h2>
+  <ul>
+    <li><strong>400</strong>: Geçersiz istek</li>
+    <li><strong>404</strong>: Akış bulunamadı</li>
+    <li><strong>500</strong>: Sunucu hatası</li>
+  </ul>
 </body>
 </html>

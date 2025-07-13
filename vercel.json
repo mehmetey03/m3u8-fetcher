@@ -2,14 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/fetchStream.js",
+      "src": "api/fetch.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/fetchStream"
+      "src": "/fetch/(.*)",
+      "dest": "/api/fetch"
+    },
+    {
+      "src": "/stream/(.*)",
+      "dest": "/api/fetch"
+    },
+    {
+      "src": "/proxy",
+      "dest": "/api/fetch"
     }
   ]
 }

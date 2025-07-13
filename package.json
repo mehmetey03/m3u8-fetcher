@@ -1,16 +1,11 @@
 {
-  "name": "m3u8-fetcher",
-  "version": "1.0.0",
-  "main": "api/fetchStream.js",
-  "scripts": {
-    "start": "node api/fetchStream.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "dependencies": {
-    "puppeteer": "^21.0.0"
+    "express": "^4.21.2",
+    "node-fetch": "^3.3.2",
+    "puppeteer": "^22.0.0",
+    "puppeteer-core": "^24.12.1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": ""
+  "scripts": {
+    "start": "node api/fetch.js"
+  }
 }

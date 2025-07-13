@@ -1,17 +1,14 @@
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
 
+// Chromium ayarları
+chromium.setGraphicsMode = false; // Grafik modunu kapat
+
 exports.handler = async (event) => {
   try {
-    // Chromium executable path kontrolü
-    let chromiumPath;
-    try {
-      chromiumPath = await chromium.executablePath();
-      console.log('Chromium path:', chromiumPath);
-    } catch (err) {
-      console.error('Chromium path hatası:', err);
-      throw new Error('Chromium başlatılamadı: Yol bulunamadı');
-    }
+    // Chromium executable path
+    const chromiumPath = await chromium.executablePath();
+    console.log('Chromium path:', chromiumPath);
 
     const id = event.queryStringParameters?.id;
     
@@ -26,10 +23,19 @@ exports.handler = async (event) => {
     }
 
     const browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--single-process',
+        '--disable-gpu',
+        '--no-zygote'
+      ],
       executablePath: chromiumPath,
       headless: chromium.headless,
       ignoreHTTPSErrors: true,
+      dumpio: true // Hata ayıklama için
     });
 
     const page = await browser.newPage();
@@ -79,9 +85,9 @@ exports.handler = async (event) => {
     return {
       statusCode: 500,
       body: JSON.stringify({ 
-        error: 'Sunucu hatası',
-        message: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        error: 'Tarayıcı başlatma hatası',
+        message: error.message.replace(/\n/g, ' '), // Yeni satırları kaldır
+        suggestion: 'Lütfen daha sonra tekrar deneyin'
       })
     };
   }

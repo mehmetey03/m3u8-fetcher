@@ -1,5 +1,5 @@
 [build]
-  command = "npm install && npm install @sparticuz/chromium-min"
+  command = "npm install && npm run postinstall"
   functions = "api"
   publish = "public"
 
@@ -12,3 +12,6 @@
   from = "/proxy"
   to = "/.netlify/functions/proxy"
   status = 200
+
+[build.environment]
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"

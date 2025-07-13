@@ -1,12 +1,16 @@
 const fetch = require('node-fetch');
 
 exports.handler = async (event) => {
-  const targetUrl = event.queryStringParameters.url;
+  const targetUrl = event.queryStringParameters?.url;
   
   if (!targetUrl) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: 'URL parametresi eksik' })
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        error: 'URL parametresi eksik',
+        usage: '/proxy?url=ENCODED_URL'
+      })
     };
   }
 
@@ -15,8 +19,7 @@ exports.handler = async (event) => {
     const response = await fetch(decodedUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Referer': 'https://macizlevip315.shop/',
-        'Accept': '*/*'
+        'Referer': 'https://macizlevip315.shop/'
       },
       timeout: 5000
     });
@@ -32,7 +35,7 @@ exports.handler = async (event) => {
       const text = await response.text();
       return {
         statusCode: 200,
-        headers: { 
+        headers: {
           'Content-Type': 'application/vnd.apple.mpegurl',
           'Access-Control-Allow-Origin': '*'
         },
@@ -42,14 +45,21 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: 'Geçersiz M3U8 akışı' })
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        error: 'Geçersiz akış formatı',
+        expected: 'M3U8',
+        received: contentType
+      })
     };
+
   } catch (error) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ 
-        error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        error: 'Proxy hatası',
+        message: error.message
       })
     };
   }

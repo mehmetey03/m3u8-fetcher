@@ -2,12 +2,16 @@ const puppeteer = require('puppeteer');
 const chromium = require('@sparticuz/chromium');
 
 exports.handler = async (event) => {
-  const { id } = event.pathParameters || {};
+  // ID parametresini al (path'den veya query string'den)
+  const id = event.pathParameters?.id || event.queryStringParameters?.id;
   
-  if (!id) {
+  if (!id || isNaN(Number(id))) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: 'ID parametresi gereklidir' })
+      body: JSON.stringify({ 
+        error: 'Geçerli bir ID parametresi gereklidir',
+        usage: '/fetch/123 veya /fetch?id=123'
+      })
     };
   }
 
@@ -18,7 +22,6 @@ exports.handler = async (event) => {
       executablePath: await chromium.executablePath(),
       headless: chromium.headless,
       ignoreHTTPSErrors: true,
-      defaultViewport: chromium.defaultViewport,
     });
 
     const page = await browser.newPage();
@@ -28,7 +31,6 @@ exports.handler = async (event) => {
     const targetUrl = `https://macizlevip315.shop/wp-content/themes/ikisifirbirdokuz/match-center.php?id=${id}`;
     let m3u8Url = null;
 
-    // Response'lardan M3U8 URL'sini yakala
     page.on('response', async (response) => {
       const url = response.url();
       if (url.includes('.m3u8') && !m3u8Url) {
@@ -41,7 +43,7 @@ exports.handler = async (event) => {
       timeout: 15000
     });
 
-    // Sayfa içeriğinde M3U8 ara
+    // Ek kontrol
     if (!m3u8Url) {
       const content = await page.content();
       const urlMatch = content.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);

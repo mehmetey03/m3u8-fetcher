@@ -1,5 +1,5 @@
 [build]
-  command = "npm install && npm run install-deps"
+  command = "npm install"
   functions = "api"
   publish = "public"
 
@@ -10,4 +10,3 @@
 
 [build.environment]
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
-  CHROMIUM_PATH = "/var/task/node_modules/@sparticuz/chromium-min/bin/chromium"

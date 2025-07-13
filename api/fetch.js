@@ -1,48 +1,53 @@
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium-min');
 
-// Chromium ayarları
-chromium.setGraphicsMode = false;
+// Chromium için özel yapılandırma
 chromium.setHeadlessMode = true;
+chromium.setGraphicsMode = false;
 
 exports.handler = async (event) => {
   try {
+    // ID parametresini al
     const id = event.queryStringParameters?.id;
     
     if (!id || isNaN(Number(id))) {
       return {
         statusCode: 400,
         body: JSON.stringify({ 
-          error: 'Geçerli ID gereklidir',
-          usage: '/fetch?id=STREAM_ID'
+          error: 'Geçersiz ID',
+          message: 'Lütfen geçerli bir sayısal ID girin (örn: ?id=5062)'
         })
       };
     }
 
     // Chromium yolunu al
-    const chromiumPath = process.env.CHROMIUM_PATH || await chromium.executablePath();
-    console.log('Chromium path:', chromiumPath);
+    const chromiumPath = await chromium.executablePath();
+    console.log('Chromium executable path:', chromiumPath);
 
+    // Tarayıcıyı başlat
     const browser = await puppeteer.launch({
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--single-process',
-        '--no-zygote'
+        '--no-zygote',
+        '--disable-gpu'
       ],
       executablePath: chromiumPath,
       headless: true,
-      ignoreHTTPSErrors: true
+      ignoreHTTPSErrors: true,
+      timeout: 8000
     });
 
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
-    await page.setDefaultNavigationTimeout(8000);
+    await page.setDefaultNavigationTimeout(10000);
 
     const targetUrl = `https://macizlevip315.shop/wp-content/themes/ikisifirbirdokuz/match-center.php?id=${id}`;
     let m3u8Url = null;
 
+    // M3U8 URL'sini yakala
     page.on('response', (response) => {
       const url = response.url();
       if (url.includes('.m3u8') && !m3u8Url) {
@@ -52,9 +57,10 @@ exports.handler = async (event) => {
 
     await page.goto(targetUrl, {
       waitUntil: 'domcontentloaded',
-      timeout: 10000
+      timeout: 15000
     });
 
+    // Fallback kontrol
     if (!m3u8Url) {
       const content = await page.content();
       const matches = content.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
@@ -66,7 +72,7 @@ exports.handler = async (event) => {
     if (!m3u8Url) {
       return {
         statusCode: 404,
-        body: JSON.stringify({ error: 'Akış bulunamadı' })
+        body: JSON.stringify({ error: 'M3U8 akışı bulunamadı' })
       };
     }
 
@@ -74,19 +80,19 @@ exports.handler = async (event) => {
       statusCode: 200,
       body: JSON.stringify({ 
         url: `/.netlify/functions/proxy?url=${encodeURIComponent(m3u8Url)}`,
-        originalUrl: m3u8Url
+        originalUrl: m3u8Url,
+        id: id
       })
     };
 
   } catch (error) {
-    console.error('HATA:', error);
+    console.error('HATA DETAYI:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({ 
-        error: 'Tarayıcı hatası',
-        message: error.message.includes('libnspr4.so') 
-          ? 'Sistem bağımlılıkları yüklenemedi' 
-          : error.message
+        error: 'Tarayıcı başlatılamadı',
+        message: 'Sistem kütüphaneleri eksik veya yapılandırma hatası',
+        solution: 'Lütfen alternatif yöntem deneyin (Cheerio) veya destek ekibine başvurun'
       })
     };
   }

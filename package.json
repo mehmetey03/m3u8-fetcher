@@ -1,17 +1,13 @@
 {
+  "name": "m3u8-fetcher",
+  "version": "1.0.0",
+  "main": "api/fetch.js",
+  "scripts": {
+    "start": "node api/fetch.js"
+  },
   "dependencies": {
-<<<<<<< HEAD
-    "express": "^4.21.2",
-    "node-fetch": "^3.3.2",
-    "puppeteer": "^22.0.0",
-    "puppeteer-core": "^24.12.1"
-=======
     "express": "^4.18.2",
     "puppeteer": "^21.0.0",
     "node-fetch": "^3.3.2"
->>>>>>> b3b056aa82b1031e9b642d818e0524c95b01ab10
-  },
-  "scripts": {
-    "start": "node api/fetch.js"
   }
 }

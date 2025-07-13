@@ -1,10 +1,9 @@
-import fetch from 'node-fetch';
-import cheerio from 'cheerio';
-import { URL } from 'url';
+const fetch = require('node-fetch');
+const cheerio = require('cheerio');
 
-export const handler = async (event) => {
+exports.handler = async (event) => {
   try {
-    // ID parametresini al ve doğrula
+    // ID parametre kontrolü
     const { id } = event.queryStringParameters || {};
     if (!id || !/^\d+$/.test(id)) {
       return {
@@ -16,50 +15,27 @@ export const handler = async (event) => {
       };
     }
 
-    // HTTP isteği yap
+    // HTTP isteği
     const targetUrl = `https://macizlevip315.shop/wp-content/themes/ikisifirbirdokuz/match-center.php?id=${id}`;
     const response = await fetch(targetUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Referer': 'https://macizlevip315.shop/'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
       },
       timeout: 5000
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP Hatası: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-    const html = await response.text();
-    const $ = cheerio.load(html);
+    // HTML analizi
+    const $ = cheerio.load(await response.text());
     
-    // M3U8 URL'sini ara
-    const findM3u8 = () => {
-      // 1. iframe'lerde ara
-      const iframeSrc = $('iframe[src*=".m3u8"]').attr('src');
-      if (iframeSrc) return iframeSrc;
-
-      // 2. script içeriklerinde ara
-      const scripts = $('script').toArray();
-      for (const script of scripts) {
-        const content = $(script).html() || '';
-        const match = content.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
-        if (match) return match[0];
-      }
-
-      // 3. video source'larında ara
-      return $('video source[src*=".m3u8"]').attr('src');
-    };
-
-    const m3u8Url = findM3u8();
-
+    // M3U8 arama
+    const m3u8Url = findM3u8Url($);
+    
     if (!m3u8Url) {
       return {
         statusCode: 404,
-        body: JSON.stringify({
-          error: 'M3U8 akışı bulunamadı',
-          suggestion: 'Farklı bir ID deneyin veya site yapısı değişmiş olabilir'
-        })
+        body: JSON.stringify({ error: 'M3U8 bulunamadı' })
       };
     }
 
@@ -67,20 +43,33 @@ export const handler = async (event) => {
       statusCode: 200,
       body: JSON.stringify({
         url: `/.netlify/functions/proxy?url=${encodeURIComponent(m3u8Url)}`,
-        originalUrl: m3u8Url,
-        id: id
+        originalUrl: m3u8Url
       })
     };
 
   } catch (error) {
-    console.error('HATA:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({
+      body: JSON.stringify({ 
         error: 'İşlem hatası',
-        message: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        message: error.message
       })
     };
   }
 };
+
+function findM3u8Url($) {
+  // 1. iframe kontrolü
+  const iframeSrc = $('iframe[src*=".m3u8"]').attr('src');
+  if (iframeSrc) return iframeSrc;
+
+  // 2. script içerikleri
+  const scripts = $('script').toArray();
+  for (const script of scripts) {
+    const match = ($(script).html() || '').match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
+    if (match) return match[0];
+  }
+
+  // 3. video source
+  return $('video source[src*=".m3u8"]').attr('src');
+}

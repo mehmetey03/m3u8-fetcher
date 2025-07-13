@@ -1,26 +1,34 @@
 const puppeteer = require('puppeteer');
-const chromium = require('@sparticuz/chromium');
+const chromium = require('@sparticuz/chromium-min');
 
 exports.handler = async (event) => {
-  // ID parametresini al (path'den veya query string'den)
-  const id = event.pathParameters?.id || event.queryStringParameters?.id;
+  const id = event.queryStringParameters?.id;
   
   if (!id || isNaN(Number(id))) {
     return {
       statusCode: 400,
       body: JSON.stringify({ 
         error: 'Geçerli bir ID parametresi gereklidir',
-        usage: '/fetch/123 veya /fetch?id=123'
+        usage: '/fetch?id=5062'
       })
     };
   }
 
   let browser;
   try {
+    // Chromium ayarları
+    const chromiumPath = await chromium.executablePath();
+    
     browser = await puppeteer.launch({
-      args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'],
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      args: [
+        ...chromium.args,
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--single-process'
+      ],
+      executablePath: chromiumPath,
+      headless: true,
       ignoreHTTPSErrors: true,
     });
 
@@ -31,6 +39,7 @@ exports.handler = async (event) => {
     const targetUrl = `https://macizlevip315.shop/wp-content/themes/ikisifirbirdokuz/match-center.php?id=${id}`;
     let m3u8Url = null;
 
+    // Response listener
     page.on('response', async (response) => {
       const url = response.url();
       if (url.includes('.m3u8') && !m3u8Url) {
@@ -39,12 +48,13 @@ exports.handler = async (event) => {
     });
 
     await page.goto(targetUrl, {
-      waitUntil: 'networkidle2',
-      timeout: 15000
+      waitUntil: 'domcontentloaded',
+      timeout: 10000
     });
 
-    // Ek kontrol
+    // Fallback kontrol
     if (!m3u8Url) {
+      await page.waitForTimeout(3000); // Ek bekleme süresi
       const content = await page.content();
       const urlMatch = content.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
       m3u8Url = urlMatch?.[0];
@@ -63,11 +73,12 @@ exports.handler = async (event) => {
       })
     };
   } catch (error) {
+    console.error('Hata:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({ 
         error: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        suggestion: 'Lütfen farklı bir ID deneyin veya daha sonra tekrar deneyin'
       })
     };
   } finally {

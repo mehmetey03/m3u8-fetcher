@@ -1,13 +1,13 @@
 {
   "name": "m3u8-fetcher",
   "version": "1.0.0",
-  "type": "module",
+  "type": "commonjs",
   "dependencies": {
-    "node-fetch": "^3.3.2",
-    "cheerio": "^1.0.0-rc.12",
-    "got": "^12.6.1"
+    "node-fetch": "2.6.7",
+    "cheerio": "1.0.0-rc.12",
+    "got": "11.8.6"
   },
   "engines": {
-    "node": ">=18.x"
+    "node": "16.x"
   }
 }

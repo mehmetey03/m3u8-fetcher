@@ -1,20 +1,20 @@
 const fetch = require('node-fetch');
 
 exports.handler = async (event) => {
-  const targetUrl = event.queryStringParameters?.url;
-  
-  if (!targetUrl) {
-    return {
-      statusCode: 400,
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        error: 'URL parametresi eksik',
-        usage: '/proxy?url=ENCODED_URL'
-      })
-    };
-  }
-
   try {
+    const targetUrl = event.queryStringParameters?.url;
+    
+    if (!targetUrl) {
+      return {
+        statusCode: 400,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          error: 'URL parametresi eksik',
+          usage: '/proxy?url=ENCODED_M3U8_URL'
+        })
+      };
+    }
+
     const decodedUrl = decodeURIComponent(targetUrl);
     const response = await fetch(decodedUrl, {
       headers: {
@@ -59,7 +59,8 @@ exports.handler = async (event) => {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         error: 'Proxy hatası',
-        message: error.message
+        message: error.message,
+        suggestion: 'Lütfen geçerli bir M3U8 URLsi sağlayın'
       })
     };
   }

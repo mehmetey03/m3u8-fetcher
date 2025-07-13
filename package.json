@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "api/fetch.js",
   "scripts": {
-    "postinstall": "node scripts/install-chromium.js"
+    "postinstall": "node scripts/install-deps.js"
   },
   "dependencies": {
     "puppeteer-core": "^21.7.0",

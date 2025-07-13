@@ -1,12 +1,7 @@
 [build]
-  command = "npm install && npm install @sparticuz/chromium"
+  command = "npm install && npm install @sparticuz/chromium-min"
   functions = "api"
   publish = "public"
-
-[[redirects]]
-  from = "/fetch/*"
-  to = "/.netlify/functions/fetch/:splat"
-  status = 200
 
 [[redirects]]
   from = "/fetch"

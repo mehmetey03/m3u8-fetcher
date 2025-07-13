@@ -1,0 +1,16 @@
+{
+  "name": "m3u8-fetcher",
+  "version": "1.0.0",
+  "main": "api/fetchStream.js",
+  "scripts": {
+    "start": "node api/fetchStream.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

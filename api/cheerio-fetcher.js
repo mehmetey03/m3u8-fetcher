@@ -14,7 +14,7 @@ exports.handler = async (event) => {
         body: JSON.stringify({
           error: 'Geçersiz ID',
           message: 'Lütfen sayısal bir ID girin',
-          example: 'https://your-site.netlify.app/.netlify/functions/cheerio-fetcher?id=5062'
+          example: 'https://metvmetv.netlify.app/.netlify/functions/cheerio-fetcher?id=5062'
         })
       };
     }

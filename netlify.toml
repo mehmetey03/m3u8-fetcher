@@ -4,9 +4,11 @@
   publish = "public"
 
 [[redirects]]
-  from = "/fetch/*"
-  to = "/.netlify/functions/fetch/:splat"
+  from = "/cheerio-fetch"
+  to = "/.netlify/functions/cheerio-fetcher"
   status = 200
 
-[build.environment]
-  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+[[redirects]]
+  from = "/cheerio-fetch/*"
+  to = "/.netlify/functions/cheerio-fetcher/:splat"
+  status = 200

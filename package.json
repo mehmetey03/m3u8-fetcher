@@ -1,12 +1,7 @@
 {
   "name": "m3u8-fetcher",
   "version": "1.0.0",
-  "scripts": {
-    "start": "node api/fetch.js"
-  },
   "dependencies": {
-    "puppeteer-core": "^21.7.0",
-    "@sparticuz/chromium-min": "^121.0.0",
     "node-fetch": "^3.3.2",
     "cheerio": "^1.0.0-rc.12"
   },

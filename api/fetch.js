@@ -10,25 +10,46 @@ exports.handler = async (event) => {
     });
     
     const page = await browser.newPage();
-    await page.goto(`https://macizlevip315.shop/match-center.php?id=${id}`);
+    await page.goto(`https://macizlevip315.shop/match-center.php?id=${id}`, {
+      waitUntil: 'networkidle2',
+      timeout: 8000
+    });
+
+    let m3u8Url = null;
     
-    // M3U8 URL'sini bulma kodu buraya
-    const m3u8Url = await findM3U8Url(page);
-    
+    // 1. Response'lardan M3U8 bulma
+    page.on('response', async (response) => {
+      const url = response.url();
+      if (url.includes('.m3u8') && !m3u8Url) {
+        m3u8Url = url;
+      }
+    });
+
+    // 2. Sayfa içeriğinde arama
+    const content = await page.content();
+    const urlMatch = content.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
+    m3u8Url = m3u8Url || urlMatch?.[0];
+
     await browser.close();
-    
+
+    if (!m3u8Url) {
+      throw new Error('M3U8 URL bulunamadı');
+    }
+
     return {
       statusCode: 200,
-      body: JSON.stringify({ url: m3u8Url })
+      body: JSON.stringify({ 
+        url: `/.netlify/functions/proxy?url=${encodeURIComponent(m3u8Url)}`,
+        originalUrl: m3u8Url
+      })
     };
   } catch (error) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message })
+      body: JSON.stringify({ 
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      })
     };
   }
 };
-
-async function findM3U8Url(page) {
-  // M3U8 bulma mantığınız burada
-}

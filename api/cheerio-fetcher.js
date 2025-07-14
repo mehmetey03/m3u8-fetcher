@@ -15,38 +15,36 @@ exports.handler = async (event) => {
     }
 
     const targetUrl = `https://macizlevip315.shop/wp-content/themes/ikisifirbirdokuz/match-center.php?id=${id}`;
+
+    const AbortController = globalThis.AbortController || require('abort-controller');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
     const response = await fetch(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'Referer': 'https://macizlevip315.shop/'
       },
-      timeout: 10000
+      signal: controller.signal
     });
+    clearTimeout(timeout);
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const html = await response.text();
-    
-    // ÖZEL CLOUDFLARE WORKER PATTERNİ
+
     const cfWorkerPatterns = [
-      // Pattern 1: Örnekte verdiğiniz yapı
       /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/-\/\d+\/playlist\.m3u8\?verify=[a-f0-9~%]+/i,
-      
-      // Pattern 2: Alternatif worker yapıları
       /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/\d+\/[^"'\s]+\.m3u8/i,
-      
-      // Pattern 3: Base64 kodlu URL'ler
       /"([a-zA-Z0-9+/=]+\.m3u8)"/i
     ];
 
-    // 1. Direk HTML'de pattern ara
     for (const pattern of cfWorkerPatterns) {
       const matches = html.match(pattern);
       if (matches && matches[0]) {
         let foundUrl = matches[0];
-        
-        // Base64 decode gerekiyorsa
-        if (pattern === cfWorkerPatterns[2]) {
+        // Base64 kontrolü:
+        if (pattern.toString() === cfWorkerPatterns[2].toString()) {
           try {
             foundUrl = Buffer.from(matches[1], 'base64').toString('utf-8');
           } catch (e) {
@@ -66,10 +64,8 @@ exports.handler = async (event) => {
       }
     }
 
-    // 2. Cheerio ile detaylı arama
     const $ = cheerio.load(html);
-    
-    // A. iframe'lerde ara
+
     const iframeSrc = $('iframe[src*="workers.dev"], iframe[src*="m3u8"]').attr('src');
     if (iframeSrc && iframeSrc.includes('.m3u8')) {
       return {
@@ -83,12 +79,9 @@ exports.handler = async (event) => {
       };
     }
 
-    // B. script içeriğinde ara
     const scripts = $('script:not([src])').toArray();
     for (const script of scripts) {
       const content = $(script).html() || '';
-      
-      // JSON verisi içinde
       const jsonMatch = content.match(/"stream_url":"(https?:\/\/[^"]+\.m3u8)"/i);
       if (jsonMatch) {
         return {
@@ -101,8 +94,7 @@ exports.handler = async (event) => {
           })
         };
       }
-      
-      // Raw URL
+
       const rawMatch = content.match(/(https?:\/\/[^\s"']+\.workers\.dev[^\s"']*\.m3u8[^\s"']*)/i);
       if (rawMatch) {
         return {
@@ -117,7 +109,6 @@ exports.handler = async (event) => {
       }
     }
 
-    // C. data-* attribute'larında ara
     const dataElems = $('[data-url],[data-src]').toArray();
     for (const elem of dataElems) {
       const url = $(elem).attr('data-url') || $(elem).attr('data-src');
@@ -134,7 +125,6 @@ exports.handler = async (event) => {
       }
     }
 
-    // 3. Debug bilgileri
     const debugInfo = {
       patternsTried: cfWorkerPatterns.map(p => p.toString()),
       htmlSnippet: html.substring(0, 500) + '...',

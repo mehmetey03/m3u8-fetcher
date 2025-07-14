@@ -26,97 +26,92 @@ exports.handler = async (event) => {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const html = await response.text();
-    const $ = cheerio.load(html);
     
-    // Cloudflare Worker Pattern'ini destekleyen arama
-    const findStreamUrl = () => {
-      // 1. Cloudflare Worker URL pattern'i
-      const cfWorkerPattern = /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/-\/\d+\/playlist\.m3u8\?verify=[^"']+/i;
-      const cfMatch = html.match(cfWorkerPattern);
-      if (cfMatch) return cfMatch[0];
-
-      // 2. iframe src'leri (özellikle .workers.dev içerenler)
-      const iframes = $('iframe[src*="workers.dev"]').toArray();
-      for (const iframe of iframes) {
-        const src = $(iframe).attr('src');
-        if (src && src.includes('playlist.m3u8')) {
-          return src;
-        }
-      }
-
-      // 3. Script içindeki özel pattern
-      const scripts = $('script:not([src])').toArray();
-      for (const script of scripts) {
-        const content = $(script).html() || '';
-        const workerUrlMatch = content.match(/"(https?:\/\/[^"]+\.workers\.dev[^"]+\.m3u8[^"]*)"/i);
-        if (workerUrlMatch) return workerUrlMatch[1];
-      }
-
-      // 4. data-* attribute'ları
-      const dataElems = $('[data-stream],[data-url]').toArray();
-      for (const elem of dataElems) {
-        const url = $(elem).attr('data-stream') || $(elem).attr('data-url');
-        if (url && url.includes('workers.dev') && url.includes('.m3u8')) {
-          return url;
-        }
-      }
-
-      return null;
-    };
-
-    let streamUrl = findStreamUrl();
-
-    // URL doğrulama
-    if (streamUrl && !streamUrl.startsWith('http')) {
-      try {
-        streamUrl = new URL(streamUrl, targetUrl).toString();
-      } catch (e) {
-        console.error('URL parse hatası:', e);
-        streamUrl = null;
-      }
-    }
-
-    if (!streamUrl) {
-      // Debug için önemli HTML kısımları
-      const debugSections = {
-        iframes: $('iframe').map((i, el) => $(el).attr('src')).get(),
-        scripts: $('script').map((i, el) => $(el).html().substring(0, 100)).get(),
-        metaTags: $('meta[content*="m3u8"]').map((i, el) => $(el).attr('content')).get()
-      };
-
+    // ÖNEMLİ: Direk HTML'de Cloudflare Worker patternini ara
+    const cfWorkerPattern = /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/-\/\d+\/playlist\.m3u8\?verify=[a-f0-9~%]+/gi;
+    const cfMatches = html.match(cfWorkerPattern);
+    
+    if (cfMatches && cfMatches.length > 0) {
+      // En uzun eşleşmeyi al (genellikle doğru olan bu)
+      const m3u8Url = cfMatches.sort((a,b) => b.length - a.length)[0];
+      
       return {
-        statusCode: 404,
+        statusCode: 200,
         body: JSON.stringify({ 
-          error: 'Akış URLsi bulunamadı',
-          debug: debugSections,
-          suggestions: [
-            'Site yapısı değişmiş olabilir',
-            'Cloudflare Worker URL patternini kontrol edin',
-            'Farklı bir ID deneyin (5062 yerine 5063 gibi)'
-          ]
+          url: `/.netlify/functions/proxy?url=${encodeURIComponent(m3u8Url)}`,
+          originalUrl: m3u8Url,
+          id: id,
+          detectedBy: 'direct-html-pattern'
         })
       };
     }
 
+    // Cheerio ile detaylı arama
+    const $ = cheerio.load(html);
+    
+    // 1. iframe'lerde worker URL ara
+    $('iframe').each((i, el) => {
+      const src = $(el).attr('src');
+      if (src && src.includes('workers.dev') && src.includes('.m3u8')) {
+        throw new FoundUrlException(src); // Özel exception ile çık
+      }
+    });
+
+    // 2. script etiketlerinde ara
+    $('script').each((i, el) => {
+      const content = $(el).html() || '';
+      const match = content.match(/(https?:\/\/[^\s"']+\.workers\.dev[^\s"']*\.m3u8[^\s"']*)/i);
+      if (match) throw new FoundUrlException(match[0]);
+    });
+
+    // 3. data-* attribute'larında ara
+    $('[data-url],[data-src]').each((i, el) => {
+      const url = $(el).attr('data-url') || $(el).attr('data-src');
+      if (url && url.includes('workers.dev') && url.includes('.m3u8')) {
+        throw new FoundUrlException(url);
+      }
+    });
+
     return {
-      statusCode: 200,
+      statusCode: 404,
       body: JSON.stringify({ 
-        url: `/.netlify/functions/proxy?url=${encodeURIComponent(streamUrl)}`,
-        originalUrl: streamUrl,
-        id: id,
-        source: 'cloudflare-worker'
+        error: 'M3U8 bulunamadı',
+        debug: {
+          htmlSnippet: html.substring(0, 500) + '...',
+          patternMatches: cfMatches || []
+        }
       })
     };
 
   } catch (error) {
+    if (error instanceof FoundUrlException) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ 
+          url: `/.netlify/functions/proxy?url=${encodeURIComponent(error.url)}`,
+          originalUrl: error.url,
+          id: id,
+          detectedBy: error.source
+        })
+      };
+    }
+
     console.error('HATA:', error);
     return {
       statusCode: 500,
       body: JSON.stringify({ 
         error: 'İşlem hatası',
-        message: error.message.replace(/https?:\/\/[^\s]+/g, '***URL_SCRUBBED***'),
-        type: error.name
+        message: error.message
       })
     };
   }
 };
+
+// Özel Exception Sınıfı
+class FoundUrlException extends Error {
+  constructor(url, source = 'cheerio-detection') {
+    super('URL bulundu');
+    this.url = url;
+    this.source = source;
+  }
+}

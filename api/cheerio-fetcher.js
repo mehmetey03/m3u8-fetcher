@@ -33,116 +33,70 @@ exports.handler = async (event) => {
 
     const html = await response.text();
 
-    const cfWorkerPatterns = [
-      /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/-\/\d+\/playlist\.m3u8\?verify=[a-f0-9~%]+/i,
-      /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/\d+\/[^"'\s]+\.m3u8/i,
-      /"([a-zA-Z0-9+/=]+\.m3u8)"/i
-    ];
-
-    for (const pattern of cfWorkerPatterns) {
-      const matches = html.match(pattern);
-      if (matches && matches[0]) {
-        let foundUrl = matches[0];
-        // Base64 kontrolü:
-        if (pattern.toString() === cfWorkerPatterns[2].toString()) {
-          try {
-            foundUrl = Buffer.from(matches[1], 'base64').toString('utf-8');
-          } catch (e) {
-            continue;
-          }
-        }
-
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ 
-            url: `/.netlify/functions/proxy?url=${encodeURIComponent(foundUrl)}`,
-            originalUrl: foundUrl,
-            id: id,
-            detectedBy: 'direct-pattern-match'
-          })
-        };
-      }
-    }
-
     const $ = cheerio.load(html);
 
-    const iframeSrc = $('iframe[src*="workers.dev"], iframe[src*="m3u8"]').attr('src');
-    if (iframeSrc && iframeSrc.includes('.m3u8')) {
+    // 1. Geniş .m3u8 linki araması (workers.dev, veya genel)
+    let m3u8Links = [];
+
+    // a) Direkt HTML içi tüm m3u8 linklerini yakala
+    const generalMatches = html.match(/https?:\/\/[^\s'"]+\.m3u8[^\s'"]*/gi);
+    if (generalMatches && generalMatches.length) {
+      m3u8Links.push(...generalMatches);
+    }
+
+    // b) iframe içi kontrol
+    $('iframe').each((i, el) => {
+      const src = $(el).attr('src') || '';
+      if (src.includes('.m3u8')) m3u8Links.push(src);
+    });
+
+    // c) data-url veya data-src attribute'ları
+    $('[data-url],[data-src]').each((i, el) => {
+      const url = $(el).attr('data-url') || $(el).attr('data-src');
+      if (url && url.includes('.m3u8')) m3u8Links.push(url);
+    });
+
+    // d) script içindeki JSON veya raw link araması
+    $('script:not([src])').each((i, el) => {
+      const content = $(el).html() || '';
+      // JSON içindeki stream_url
+      const jsonMatch = content.match(/"stream_url"\s*:\s*"([^"]+\.m3u8)"/i);
+      if (jsonMatch) m3u8Links.push(jsonMatch[1]);
+
+      // Raw m3u8 linki
+      const rawMatch = content.match(/https?:\/\/[^\s"']+\.m3u8[^\s"']*/i);
+      if (rawMatch) m3u8Links.push(rawMatch[0]);
+    });
+
+    // Tekrarlayan linkleri temizle
+    m3u8Links = [...new Set(m3u8Links)];
+
+    if (m3u8Links.length === 0) {
       return {
-        statusCode: 200,
-        body: JSON.stringify({ 
-          url: `/.netlify/functions/proxy?url=${encodeURIComponent(iframeSrc)}`,
-          originalUrl: iframeSrc,
-          id: id,
-          detectedBy: 'iframe-src'
+        statusCode: 404,
+        body: JSON.stringify({
+          error: 'M3U8 bulunamadı',
+          suggestions: [
+            'ID yanlış olabilir veya',
+            'Site yapısı değişmiş olabilir.',
+            'HTML çıktısını inceleyin.'
+          ],
+          htmlSnippet: html.substring(0, 500) + '...'
         })
       };
     }
 
-    const scripts = $('script:not([src])').toArray();
-    for (const script of scripts) {
-      const content = $(script).html() || '';
-      const jsonMatch = content.match(/"stream_url":"(https?:\/\/[^"]+\.m3u8)"/i);
-      if (jsonMatch) {
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ 
-            url: `/.netlify/functions/proxy?url=${encodeURIComponent(jsonMatch[1])}`,
-            originalUrl: jsonMatch[1],
-            id: id,
-            detectedBy: 'script-json'
-          })
-        };
-      }
-
-      const rawMatch = content.match(/(https?:\/\/[^\s"']+\.workers\.dev[^\s"']*\.m3u8[^\s"']*)/i);
-      if (rawMatch) {
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ 
-            url: `/.netlify/functions/proxy?url=${encodeURIComponent(rawMatch[0])}`,
-            originalUrl: rawMatch[0],
-            id: id,
-            detectedBy: 'script-raw'
-          })
-        };
-      }
-    }
-
-    const dataElems = $('[data-url],[data-src]').toArray();
-    for (const elem of dataElems) {
-      const url = $(elem).attr('data-url') || $(elem).attr('data-src');
-      if (url && url.includes('workers.dev') && url.includes('.m3u8')) {
-        return {
-          statusCode: 200,
-          body: JSON.stringify({ 
-            url: `/.netlify/functions/proxy?url=${encodeURIComponent(url)}`,
-            originalUrl: url,
-            id: id,
-            detectedBy: 'data-attribute'
-          })
-        };
-      }
-    }
-
-    const debugInfo = {
-      patternsTried: cfWorkerPatterns.map(p => p.toString()),
-      htmlSnippet: html.substring(0, 500) + '...',
-      iframeCount: $('iframe').length,
-      scriptCount: $('script').length,
-      dataAttrCount: $('[data-url],[data-src]').length
-    };
+    // İlk bulduğumuz linki döndür
+    const foundUrl = m3u8Links[0];
 
     return {
-      statusCode: 404,
-      body: JSON.stringify({ 
-        error: 'M3U8 bulunamadı',
-        debug: debugInfo,
-        suggestions: [
-          'Site yapısı değişmiş olabilir',
-          'Farklı bir ID deneyin (5062 yerine 5061 gibi)',
-          'HTML çıktısını inceleyin'
-        ]
+      statusCode: 200,
+      body: JSON.stringify({
+        url: `/.netlify/functions/proxy?url=${encodeURIComponent(foundUrl)}`,
+        originalUrl: foundUrl,
+        id: id,
+        allFound: m3u8Links,
+        detectedBy: 'general-scan'
       })
     };
 
@@ -150,7 +104,7 @@ exports.handler = async (event) => {
     console.error('HATA:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         error: 'İşlem hatası',
         message: error.message
       })

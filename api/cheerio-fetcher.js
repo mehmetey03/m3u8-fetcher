@@ -27,75 +27,136 @@ exports.handler = async (event) => {
 
     const html = await response.text();
     
-    // ÖNEMLİ: Direk HTML'de Cloudflare Worker patternini ara
-    const cfWorkerPattern = /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/-\/\d+\/playlist\.m3u8\?verify=[a-f0-9~%]+/gi;
-    const cfMatches = html.match(cfWorkerPattern);
-    
-    if (cfMatches && cfMatches.length > 0) {
-      // En uzun eşleşmeyi al (genellikle doğru olan bu)
-      const m3u8Url = cfMatches.sort((a,b) => b.length - a.length)[0];
+    // ÖZEL CLOUDFLARE WORKER PATTERNİ
+    const cfWorkerPatterns = [
+      // Pattern 1: Örnekte verdiğiniz yapı
+      /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/-\/\d+\/playlist\.m3u8\?verify=[a-f0-9~%]+/i,
       
+      // Pattern 2: Alternatif worker yapıları
+      /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/\d+\/[^"'\s]+\.m3u8/i,
+      
+      // Pattern 3: Base64 kodlu URL'ler
+      /"([a-zA-Z0-9+/=]+\.m3u8)"/i
+    ];
+
+    // 1. Direk HTML'de pattern ara
+    for (const pattern of cfWorkerPatterns) {
+      const matches = html.match(pattern);
+      if (matches && matches[0]) {
+        let foundUrl = matches[0];
+        
+        // Base64 decode gerekiyorsa
+        if (pattern === cfWorkerPatterns[2]) {
+          try {
+            foundUrl = Buffer.from(matches[1], 'base64').toString('utf-8');
+          } catch (e) {
+            continue;
+          }
+        }
+
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ 
+            url: `/.netlify/functions/proxy?url=${encodeURIComponent(foundUrl)}`,
+            originalUrl: foundUrl,
+            id: id,
+            detectedBy: 'direct-pattern-match'
+          })
+        };
+      }
+    }
+
+    // 2. Cheerio ile detaylı arama
+    const $ = cheerio.load(html);
+    
+    // A. iframe'lerde ara
+    const iframeSrc = $('iframe[src*="workers.dev"], iframe[src*="m3u8"]').attr('src');
+    if (iframeSrc && iframeSrc.includes('.m3u8')) {
       return {
         statusCode: 200,
         body: JSON.stringify({ 
-          url: `/.netlify/functions/proxy?url=${encodeURIComponent(m3u8Url)}`,
-          originalUrl: m3u8Url,
+          url: `/.netlify/functions/proxy?url=${encodeURIComponent(iframeSrc)}`,
+          originalUrl: iframeSrc,
           id: id,
-          detectedBy: 'direct-html-pattern'
+          detectedBy: 'iframe-src'
         })
       };
     }
 
-    // Cheerio ile detaylı arama
-    const $ = cheerio.load(html);
-    
-    // 1. iframe'lerde worker URL ara
-    $('iframe').each((i, el) => {
-      const src = $(el).attr('src');
-      if (src && src.includes('workers.dev') && src.includes('.m3u8')) {
-        throw new FoundUrlException(src); // Özel exception ile çık
+    // B. script içeriğinde ara
+    const scripts = $('script:not([src])').toArray();
+    for (const script of scripts) {
+      const content = $(script).html() || '';
+      
+      // JSON verisi içinde
+      const jsonMatch = content.match(/"stream_url":"(https?:\/\/[^"]+\.m3u8)"/i);
+      if (jsonMatch) {
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ 
+            url: `/.netlify/functions/proxy?url=${encodeURIComponent(jsonMatch[1])}`,
+            originalUrl: jsonMatch[1],
+            id: id,
+            detectedBy: 'script-json'
+          })
+        };
       }
-    });
+      
+      // Raw URL
+      const rawMatch = content.match(/(https?:\/\/[^\s"']+\.workers\.dev[^\s"']*\.m3u8[^\s"']*)/i);
+      if (rawMatch) {
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ 
+            url: `/.netlify/functions/proxy?url=${encodeURIComponent(rawMatch[0])}`,
+            originalUrl: rawMatch[0],
+            id: id,
+            detectedBy: 'script-raw'
+          })
+        };
+      }
+    }
 
-    // 2. script etiketlerinde ara
-    $('script').each((i, el) => {
-      const content = $(el).html() || '';
-      const match = content.match(/(https?:\/\/[^\s"']+\.workers\.dev[^\s"']*\.m3u8[^\s"']*)/i);
-      if (match) throw new FoundUrlException(match[0]);
-    });
-
-    // 3. data-* attribute'larında ara
-    $('[data-url],[data-src]').each((i, el) => {
-      const url = $(el).attr('data-url') || $(el).attr('data-src');
+    // C. data-* attribute'larında ara
+    const dataElems = $('[data-url],[data-src]').toArray();
+    for (const elem of dataElems) {
+      const url = $(elem).attr('data-url') || $(elem).attr('data-src');
       if (url && url.includes('workers.dev') && url.includes('.m3u8')) {
-        throw new FoundUrlException(url);
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ 
+            url: `/.netlify/functions/proxy?url=${encodeURIComponent(url)}`,
+            originalUrl: url,
+            id: id,
+            detectedBy: 'data-attribute'
+          })
+        };
       }
-    });
+    }
+
+    // 3. Debug bilgileri
+    const debugInfo = {
+      patternsTried: cfWorkerPatterns.map(p => p.toString()),
+      htmlSnippet: html.substring(0, 500) + '...',
+      iframeCount: $('iframe').length,
+      scriptCount: $('script').length,
+      dataAttrCount: $('[data-url],[data-src]').length
+    };
 
     return {
       statusCode: 404,
       body: JSON.stringify({ 
         error: 'M3U8 bulunamadı',
-        debug: {
-          htmlSnippet: html.substring(0, 500) + '...',
-          patternMatches: cfMatches || []
-        }
+        debug: debugInfo,
+        suggestions: [
+          'Site yapısı değişmiş olabilir',
+          'Farklı bir ID deneyin (5062 yerine 5061 gibi)',
+          'HTML çıktısını inceleyin'
+        ]
       })
     };
 
   } catch (error) {
-    if (error instanceof FoundUrlException) {
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ 
-          url: `/.netlify/functions/proxy?url=${encodeURIComponent(error.url)}`,
-          originalUrl: error.url,
-          id: id,
-          detectedBy: error.source
-        })
-      };
-    }
-
     console.error('HATA:', error);
     return {
       statusCode: 500,
@@ -106,12 +167,3 @@ exports.handler = async (event) => {
     };
   }
 };
-
-// Özel Exception Sınıfı
-class FoundUrlException extends Error {
-  constructor(url, source = 'cheerio-detection') {
-    super('URL bulundu');
-    this.url = url;
-    this.source = source;
-  }
-}

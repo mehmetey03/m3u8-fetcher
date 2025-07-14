@@ -11,32 +11,43 @@ exports.handler = async (event) => {
   }
 
   try {
-    const response = await fetch(decodeURIComponent(targetUrl), {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Referer': 'https://macizlevip315.shop/'
-      },
-      timeout: 5000
-    });
+    const decodedUrl = decodeURIComponent(targetUrl);
+    
+    // Cloudflare Worker için özel headers
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Referer': 'https://macizlevip315.shop/',
+      'Origin': 'https://macizlevip315.shop'
+    };
 
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('mpegurl') || targetUrl.includes('.m3u8')) {
-      return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'application/vnd.apple.mpegurl' },
-        body: await response.text()
-      };
-    }
+    // Özel timeout kontrolü
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const response = await fetch(decodedUrl, {
+      headers: headers,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Geçersiz akış formatı' })
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/vnd.apple.mpegurl',
+        'Cache-Control': 'public, max-age=60'
+      },
+      body: await response.text()
     };
 
   } catch (error) {
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message })
+      body: JSON.stringify({ 
+        error: 'Proxy hatası',
+        message: error.message
+      })
     };
   }
 };

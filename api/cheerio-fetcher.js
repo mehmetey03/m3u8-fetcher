@@ -28,110 +28,83 @@ exports.handler = async (event) => {
     const html = await response.text();
     const $ = cheerio.load(html);
     
-    // 1. Gelişmiş M3U8 Arama Fonksiyonu
-    const findM3u8Url = ($) => {
-      // Strateji 1: iframe src'leri
-      const iframes = $('iframe').toArray();
+    // Cloudflare Worker Pattern'ini destekleyen arama
+    const findStreamUrl = () => {
+      // 1. Cloudflare Worker URL pattern'i
+      const cfWorkerPattern = /https?:\/\/[a-z0-9.-]+\.workers\.dev\/[a-f0-9]+\/-\/\d+\/playlist\.m3u8\?verify=[^"']+/i;
+      const cfMatch = html.match(cfWorkerPattern);
+      if (cfMatch) return cfMatch[0];
+
+      // 2. iframe src'leri (özellikle .workers.dev içerenler)
+      const iframes = $('iframe[src*="workers.dev"]').toArray();
       for (const iframe of iframes) {
         const src = $(iframe).attr('src');
-        if (src && (src.includes('m3u8') || src.includes('stream'))) {
+        if (src && src.includes('playlist.m3u8')) {
           return src;
         }
       }
 
-      // Strateji 2: Script içindeki JSON verileri
+      // 3. Script içindeki özel pattern
       const scripts = $('script:not([src])').toArray();
       for (const script of scripts) {
         const content = $(script).html() || '';
-        
-        // JSON formatında URL ara
-        const jsonMatches = content.match(/(?:"|')(https?:\/\/[^"']+\.m3u8[^"']*)(?:"|')/gi);
-        if (jsonMatches) {
-          for (const match of jsonMatches) {
-            const url = match.replace(/["']/g, '');
-            if (url.includes('m3u8')) return url;
-          }
+        const workerUrlMatch = content.match(/"(https?:\/\/[^"]+\.workers\.dev[^"]+\.m3u8[^"]*)"/i);
+        if (workerUrlMatch) return workerUrlMatch[1];
+      }
+
+      // 4. data-* attribute'ları
+      const dataElems = $('[data-stream],[data-url]').toArray();
+      for (const elem of dataElems) {
+        const url = $(elem).attr('data-stream') || $(elem).attr('data-url');
+        if (url && url.includes('workers.dev') && url.includes('.m3u8')) {
+          return url;
         }
       }
-
-      // Strateji 3: Video/Audio source'ları
-      const mediaSources = $('video source, audio source').toArray();
-      for (const source of mediaSources) {
-        const src = $(source).attr('src');
-        if (src && src.includes('m3u8')) return src;
-      }
-
-      // Strateji 4: data-* attribute'ları
-      const dataElements = $('[data-src],[data-url]').toArray();
-      for (const elem of dataElements) {
-        const src = $(elem).attr('data-src') || $(elem).attr('data-url');
-        if (src && src.includes('m3u8')) return src;
-      }
-
-      // Strateji 5: JavaScript değişkenleri
-      const jsVars = html.match(/var\s+\w+\s*=\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i);
-      if (jsVars) return jsVars[1];
-
-      // Strateji 6: Sayfa içindeki raw URL'ler
-      const rawUrlMatch = html.match(/(https?:\/\/[^\s"']+\.m3u8[^\s"']*)/i);
-      if (rawUrlMatch) return rawUrlMatch[0];
 
       return null;
     };
 
-    let m3u8Url = findM3u8Url($);
+    let streamUrl = findStreamUrl();
 
-    // 2. URL Normalleştirme
-    if (m3u8Url) {
+    // URL doğrulama
+    if (streamUrl && !streamUrl.startsWith('http')) {
       try {
-        if (!m3u8Url.startsWith('http')) {
-          m3u8Url = new URL(m3u8Url, targetUrl).toString();
-        }
+        streamUrl = new URL(streamUrl, targetUrl).toString();
       } catch (e) {
-        console.error('URL normalleştirme hatası:', e);
-        m3u8Url = null;
+        console.error('URL parse hatası:', e);
+        streamUrl = null;
       }
     }
 
-    if (!m3u8Url) {
-      // 3. Debug Bilgileri
-      const debugInfo = {
-        searchedElements: {
-          iframes: $('iframe').length,
-          scripts: $('script').length,
-          videoSources: $('video source, audio source').length,
-          dataElements: $('[data-src],[data-url]').length
-        },
-        htmlSnippet: html.substring(0, 500) + '...' // İlk 500 karakter
+    if (!streamUrl) {
+      // Debug için önemli HTML kısımları
+      const debugSections = {
+        iframes: $('iframe').map((i, el) => $(el).attr('src')).get(),
+        scripts: $('script').map((i, el) => $(el).html().substring(0, 100)).get(),
+        metaTags: $('meta[content*="m3u8"]').map((i, el) => $(el).attr('content')).get()
       };
 
       return {
         statusCode: 404,
         body: JSON.stringify({ 
-          error: 'M3U8 bulunamadı',
-          debug: debugInfo,
+          error: 'Akış URLsi bulunamadı',
+          debug: debugSections,
           suggestions: [
             'Site yapısı değişmiş olabilir',
-            'Farklı bir ID deneyin',
-            'HTML çıktısını kontrol edin'
+            'Cloudflare Worker URL patternini kontrol edin',
+            'Farklı bir ID deneyin (5062 yerine 5063 gibi)'
           ]
         })
       };
     }
 
-    // 4. Güvenlik Kontrolü
-    const allowedDomains = ['macizlevip315.shop', 'cdn.macizle.com'];
-    const urlDomain = new URL(m3u8Url).hostname;
-    if (!allowedDomains.some(domain => urlDomain.includes(domain))) {
-      throw new Error('İzin verilmeyen domain: ' + urlDomain);
-    }
-
     return {
       statusCode: 200,
       body: JSON.stringify({ 
-        url: `/.netlify/functions/proxy?url=${encodeURIComponent(m3u8Url)}`,
-        originalUrl: m3u8Url,
-        id: id
+        url: `/.netlify/functions/proxy?url=${encodeURIComponent(streamUrl)}`,
+        originalUrl: streamUrl,
+        id: id,
+        source: 'cloudflare-worker'
       })
     };
 
@@ -141,8 +114,8 @@ exports.handler = async (event) => {
       statusCode: 500,
       body: JSON.stringify({ 
         error: 'İşlem hatası',
-        message: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        message: error.message.replace(/https?:\/\/[^\s]+/g, '***URL_SCRUBBED***'),
+        type: error.name
       })
     };
   }

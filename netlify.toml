@@ -1,12 +1,6 @@
 [build]
-  command = "npm install"
   functions = "api"
   publish = "public"
-
-[[redirects]]
-  from = "/proxy"
-  to = "/.netlify/functions/proxy"
-  status = 200
 
 [functions]
   node_bundler = "esbuild"
